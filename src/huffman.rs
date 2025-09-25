@@ -69,7 +69,7 @@ where
     T: Ord + Clone + Display + Debug,
 {
 
-    fn from_freq_table(freq_table: &HashMap<T, usize>) -> Self {
+    fn from_freq_table(freq_table: &HashMap<T, usize>) -> Option<Self> {
         let mut heap: BinaryHeap<Node<T>> = BinaryHeap::new();
         let mut id: usize = 0;
 
@@ -83,15 +83,17 @@ where
 
         while !heap.is_empty() {
         
-            let left = heap.pop().unwrap();
+            let left = heap.pop()?;
             let right_opt = heap.pop();
             
-            if right_opt.is_none() { // Last node
+            if right_opt.is_none() { 
+                // Last node
                 nodes.push(left);
                 break;
             }
 
-            let right = heap.pop().unwrap();
+            let right = right_opt?;
+
             let combined_freq = left.freq + right.freq;
 
             nodes.push(left);
@@ -104,7 +106,7 @@ where
             heap.push(parent_node);
         }
 
-        Self { nodes }
+        Some(Self { nodes })
     }
 
     fn to_dotfile(&self, filename: &str) -> Result<(), Box<dyn Error>> {
@@ -114,8 +116,14 @@ where
         f.write("digraph BST {\n\tnode [fontname=\"Arial\"]\n".as_bytes())?;
         
         for node in &self.nodes {
-            let s = format!("\tl{} [ label = \"{:?}\" ];\n", node.id, node.symbol);
-            f.write(s.as_bytes())?;
+            if node.symbol.is_some() {
+                let s = format!("\tl{} [ label = \"{}\" ];\n", node.id, node.symbol.as_ref().unwrap());
+                f.write(s.as_bytes())?;
+            } else {
+                let s = format!("\tl{} [ label = \"[{}]\" ];\n", node.id, node.freq);
+                f.write(s.as_bytes())?;
+            }
+            
         }
 
         
@@ -185,14 +193,12 @@ where
     return Vec::new();
 }
 
-pub fn to_dot<T>(bytes: &[T], filename: &str) -> Result<(), Box<dyn Error>> 
+pub fn to_dotfile<T>(bytes: &[T], filename: &str) -> Result<(), Box<dyn Error>> 
 where
     T: Eq + Hash + Ord + Clone + Display + Debug
 {
     let freqs = build_freq_table(bytes);
-    println!("{:?}", freqs);
-    let tree = HuffmanTree::from_freq_table(&freqs);
-    println!("{:?}", tree.nodes);
+    let tree = HuffmanTree::from_freq_table(&freqs).unwrap();
     tree.to_dotfile(filename)?;
     Ok(())
 }
