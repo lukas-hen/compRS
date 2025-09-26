@@ -1,30 +1,47 @@
 use std::cmp::Ordering;
 use std::collections::{BinaryHeap, HashMap};
+use std::fmt::Debug;
 use std::fmt::Display;
-use std::fs::File;
 use std::format;
+use std::fs::File;
 use std::hash::Hash;
 use std::io::{BufWriter, Write};
 use std::{error::Error, result::Result};
-use std::fmt::Debug;
+// ------------- API -------------
+
+pub fn encode(input: &[u8], filename: &str) -> Result<(), Box<dyn Error>> {
+    Ok(())
+}
+
+pub fn decode(input: &[u8], filename: &str) -> Result<(), Box<dyn Error>> {
+    Ok(())
+}
+
+pub fn write_dotfile(bytes: &[u8], filename: &str) -> Result<(), Box<dyn Error>> {
+    let tree = HuffmanTree::new(bytes);
+    tree.write_dotfile(filename)?;
+    Ok(())
+}
+
+// ------------- PRIV -------------
 
 #[derive(Debug, PartialEq, Eq, Hash)]
-struct Node<T>
-where
-    T: Ord + Clone + Display + Debug,
-{
+struct Node {
     id: usize,
     freq: usize,
-    symbol: Option<T>,
+    symbol: Option<u8>,
     left: Option<usize>,
     right: Option<usize>,
 }
 
-impl<T> Node<T>
-where
-    T: Ord + Clone + Display + Debug,
-{
-    fn new(id: usize, freq: usize, symbol: Option<T>, left: Option<usize>, right: Option<usize>) -> Self {
+impl Node {
+    fn new(
+        id: usize,
+        freq: usize,
+        symbol: Option<u8>,
+        left: Option<usize>,
+        right: Option<usize>,
+    ) -> Self {
         Self {
             id,
             freq,
@@ -33,22 +50,20 @@ where
             right,
         }
     }
+
+    fn is_leaf(&self) -> bool {
+        self.left.is_none() && self.right.is_none()
+    }
 }
 
-impl<T> PartialOrd for Node<T>
-where
-    T: Ord + Clone + Display + Debug,
-{
+impl PartialOrd for Node {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
         Some(self.cmp(other))
     }
 }
 
 // Ordering to make BinaryHeap a min-heap
-impl<T> Ord for Node<T>
-where
-    T: Ord + Clone + Display + Debug,
-{
+impl Ord for Node {
     fn cmp(&self, other: &Self) -> Ordering {
         other
             .freq
@@ -57,42 +72,44 @@ where
     }
 }
 
-struct HuffmanTree<T>
-where
-    T: Ord + Clone + Display + Debug,
-{
-    nodes: Vec<Node<T>>,
+struct HuffmanTree {
+    nodes: Vec<Node>,
 }
 
-impl<T> HuffmanTree<T>
-where
-    T: Ord + Clone + Display + Debug,
-{
+impl HuffmanTree {
+    
+    fn new(bytes: &[u8]) -> Self {
+        let freqs = build_freq_table(bytes);
+        let mut heap: BinaryHeap<Node> = BinaryHeap::new();
 
-    fn from_freq_table(freq_table: &HashMap<T, usize>) -> Option<Self> {
-        let mut heap: BinaryHeap<Node<T>> = BinaryHeap::new();
+        // Required unique id per node for writing dotfiles.
         let mut id: usize = 0;
 
-        for (symbol, freq) in freq_table {
-            heap.push(Node::new(id, freq.to_owned(), Some(symbol.to_owned()), None, None));
+        for (symbol, freq) in freqs {
+            heap.push(Node::new(
+                id,
+                freq.to_owned(),
+                Some(symbol.to_owned()),
+                None,
+                None,
+            ));
             id += 1;
         }
 
-        let mut nodes: Vec<Node<T>> = Vec::new();
+        let mut nodes: Vec<Node> = Vec::new();
         let mut idx: usize = 0;
 
         while !heap.is_empty() {
-        
-            let left = heap.pop()?;
+            let left = heap.pop().unwrap();
             let right_opt = heap.pop();
-            
-            if right_opt.is_none() { 
+
+            if right_opt.is_none() {
                 // Last node
                 nodes.push(left);
                 break;
             }
 
-            let right = right_opt?;
+            let right = right_opt.unwrap();
 
             let combined_freq = left.freq + right.freq;
 
@@ -106,27 +123,25 @@ where
             heap.push(parent_node);
         }
 
-        Some(Self { nodes })
+        Self { nodes }
     }
 
-    fn to_dotfile(&self, filename: &str) -> Result<(), Box<dyn Error>> {
-        let f = File::create(filename).expect("Should be able to create file");
+    fn write_dotfile(&self, filename: &str) -> Result<(), Box<dyn Error>> {
+        let f = File::create(filename)?;
         let mut f = BufWriter::new(f);
 
-        f.write("digraph BST {\n\tnode [fontname=\"Arial\"]\n".as_bytes())?;
-        
+        write_dotfile_header(&mut f)?;
+
+        // Write nodes
         for node in &self.nodes {
             if node.symbol.is_some() {
-                let s = format!("\tl{} [ label = \"{}\" ];\n", node.id, node.symbol.as_ref().unwrap());
-                f.write(s.as_bytes())?;
+                write_dotfile_label(&mut f, node.id, node.symbol.unwrap() as char)?
             } else {
-                let s = format!("\tl{} [ label = \"[{}]\" ];\n", node.id, node.freq);
-                f.write(s.as_bytes())?;
+                write_dotfile_label(&mut f, node.id, node.freq)?
             }
-            
         }
 
-        
+        // Write edges
         for node in &self.nodes {
 
             if node.left.is_none() && node.right.is_none() {
@@ -135,72 +150,62 @@ where
 
             f.write(format!("\tl{} -> {{ ", node.id).as_bytes())?;
 
-            if node.left.is_some() {
-                let l = self.nodes[node.left.unwrap()].id;
-                f.write(format!("l{}", l).as_bytes())?;
+            if let Some(idx) = node.left {
+                let l = self.nodes[idx].id;
+                f.write(format!("l{l}").as_bytes())?;
             }
 
-            if node.right.is_some() {
-                f.write(" ".as_bytes())?;
+            if let Some(idx) = node.right {
                 let r = self.nodes[node.right.unwrap()].id;
-                f.write(format!("l{}", r).as_bytes())?;
+                f.write(format!(" l{r}").as_bytes())?;
             }
-            
+
             f.write(" };\n".as_bytes())?;
+
         }
 
-        f.write("}".as_bytes())?;
+        write_dotfile_closure(&mut f)?;
 
         Ok(())
     }
 }
 
-fn build_freq_table<T>(symbols: &[T]) -> HashMap<T, usize>
-where
-    T: Eq + Hash + Clone + Display,
-{
-    let mut freqs: HashMap<T, usize> = HashMap::new();
+fn build_freq_table(symbols: &[u8]) -> HashMap<u8, usize> {
+    let mut freqs: HashMap<u8, usize> = HashMap::new();
 
-    symbols.iter().for_each(|b| match freqs.get(b) {
-        Some(count) => {
-            freqs.insert(b.to_owned(), count + 1);
+    for symbol in symbols {
+        match freqs.get(symbol) {
+            Some(count) => {
+                freqs.insert(symbol.to_owned(), count + 1);
+            }
+            None => {
+                freqs.insert(symbol.to_owned(), 1);
+            }
         }
-        None => {
-            freqs.insert(b.to_owned(), 1);
-        }
-    });
+    }
 
     freqs
 }
 
-// PUB
-
-pub fn encode<T>(symbols: &[T], filename: &str) -> Vec<T>
-where
-    T: Eq + Hash + Ord + Clone + Display + Debug
-{
-    let freqs = build_freq_table(symbols);
-    let tree = HuffmanTree::from_freq_table(&freqs);
-    
-    return Vec::new();
-}
-
-pub fn decode<T>(symbols: &[T]) -> Vec<T> 
-where
-    T: Eq + Hash + Ord + Clone + Display + Debug
-{
-    build_freq_table(symbols);
-    return Vec::new();
-}
-
-pub fn to_dotfile<T>(bytes: &[T], filename: &str) -> Result<(), Box<dyn Error>> 
-where
-    T: Eq + Hash + Ord + Clone + Display + Debug
-{
-    let freqs = build_freq_table(bytes);
-    let tree = HuffmanTree::from_freq_table(&freqs).unwrap();
-    tree.to_dotfile(filename)?;
+fn write_dotfile_header<T: Write>(w: &mut T) -> Result<(), Box<dyn Error>> {
+    w.write("digraph BST {\n\tnode [fontname=\"Arial\"]\n".as_bytes())?;
     Ok(())
 }
 
+fn write_dotfile_label<T, I, L>(w: &mut T, node_id: I, symbol: L) -> Result<(), Box<dyn Error>>
+where
+    T: Write,
+    I: Display,
+    L: Display,
+{
+    let s = format!("\tl{} [ label = \"{}\" ];\n", node_id, symbol,);
 
+    w.write(s.as_bytes())?;
+
+    Ok(())
+}
+
+fn write_dotfile_closure<T: Write>(w: &mut T) -> Result<(), Box<dyn Error>> {
+    w.write("}".as_bytes())?;
+    Ok(())
+}
