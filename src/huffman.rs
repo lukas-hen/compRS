@@ -7,6 +7,7 @@ use std::fs::File;
 use std::hash::Hash;
 use std::io::{BufWriter, Write};
 use std::{error::Error, result::Result};
+
 // ------------- API -------------
 
 pub fn encode(input: &[u8], filename: &str) -> Result<(), Box<dyn Error>> {
@@ -19,13 +20,18 @@ pub fn decode(input: &[u8], filename: &str) -> Result<(), Box<dyn Error>> {
 
 pub fn write_dotfile(bytes: &[u8], filename: &str) -> Result<(), Box<dyn Error>> {
     let tree = HuffmanTree::new(bytes);
-    tree.write_dotfile(filename)?;
+    //tree.write_dotfile(filename)?;
+
+    for n in tree.iter_preorder() {
+        println!("{:?}", n);
+    }
+
     Ok(())
 }
 
 // ------------- PRIV -------------
 
-#[derive(Debug, PartialEq, Eq, Hash)]
+#[derive(Debug, PartialEq, Eq, Hash, Clone)]
 struct Node {
     id: usize,
     freq: usize,
@@ -75,6 +81,48 @@ impl Ord for Node {
 struct HuffmanTree {
     nodes: Vec<Node>,
 }
+
+struct PreOrderIterator<'a> {
+    nodes: &'a Vec<Node>,
+    stack: Vec<&'a Node>,
+    pos: usize,
+}
+
+impl Iterator for PreOrderIterator<'_> {
+    
+    type Item=Node;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        
+        let node = self.stack.pop()?;
+
+        if node.right.is_some() {
+            self.stack.push(&self.nodes[node.right.unwrap()]);
+        }
+        
+        if node.left.is_some() {
+            self.stack.push(&self.nodes[node.left.unwrap()]);
+        }
+
+        self.pos += 1;
+
+        Some(node.clone())
+    }
+}
+
+// impl<'a> IntoIterator for &'a HuffmanTree {
+
+//     type Item=Node;
+//     type IntoIter = PreOrderIterator<'a>;
+
+//     fn into_iter(self) -> Self::IntoIter {
+//         PreOrderIterator{
+//             data: &self.nodes, 
+//             stack: 
+//             pos: 0
+//         }
+//     }
+// }
 
 impl HuffmanTree {
     
@@ -167,6 +215,16 @@ impl HuffmanTree {
         write_dotfile_closure(&mut f)?;
 
         Ok(())
+    }
+
+    fn iter_preorder(&self) -> PreOrderIterator {
+        let mut stack = Vec::new();
+        stack.push(self.nodes.last().unwrap());
+        PreOrderIterator{ 
+            nodes: &self.nodes, 
+            stack: stack,
+            pos: 0
+        }
     }
 }
 
