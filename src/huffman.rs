@@ -1,55 +1,40 @@
-use std::cmp::Ordering;
 use std::collections::{BinaryHeap, HashMap};
-use std::fmt::Debug;
-use std::fmt::Display;
-use std::format;
-use std::fs::File;
-use std::hash::Hash;
-use std::io::{BufWriter, Write};
 use std::{error::Error, result::Result};
+use std::cmp::Ordering;
+use std::fmt::Debug;
 
-// ------------- API -------------
+const ALPHABET_SZ_ASCII: usize = 256;
+const F_BINTREE_SZ_ASCII: usize = 2*ALPHABET_SZ_ASCII-1;
 
-pub fn encode(input: &[u8], filename: &str) -> Result<(), Box<dyn Error>> {
-    Ok(())
-}
-
-pub fn decode(input: &[u8], filename: &str) -> Result<(), Box<dyn Error>> {
-    Ok(())
-}
-
-pub fn write_dotfile(bytes: &[u8], filename: &str) -> Result<(), Box<dyn Error>> {
-    let tree = HuffmanTree::new(bytes);
-    //tree.write_dotfile(filename)?;
-
-    for n in tree.iter_preorder() {
-        println!("{:?}", n);
-    }
+pub fn encode(bytes: &[u8], filename: &str) -> Result<(), Box<dyn Error>> {
+    let tree = HuffmanTree::from(bytes);
+    //println!("{:?}", tree);
+    let _ = tree.get_lengths();
 
     Ok(())
 }
 
-// ------------- PRIV -------------
+pub fn decode(bytes: &[char], filename: &str) -> Result<(), Box<dyn Error>> {
+    Ok(())
+}
 
-#[derive(Debug, PartialEq, Eq, Hash, Clone)]
+#[derive(Debug, PartialEq, Eq)]
 struct Node {
-    id: usize,
-    freq: usize,
+    freq: u32,
     symbol: Option<u8>,
     left: Option<usize>,
     right: Option<usize>,
 }
 
 impl Node {
+
     fn new(
-        id: usize,
-        freq: usize,
+        freq: u32,
         symbol: Option<u8>,
         left: Option<usize>,
         right: Option<usize>,
     ) -> Self {
         Self {
-            id,
             freq,
             symbol,
             left,
@@ -57,9 +42,20 @@ impl Node {
         }
     }
 
+    fn from(l_child: &Node, l_idx: usize, r_child: &Node, r_idx: usize) -> Self {
+        Self {
+            freq: l_child.freq + r_child.freq,
+            symbol: None,
+            left: Some(l_idx),
+            right: Some(r_idx),
+        }
+    }
+
+    #[inline]
     fn is_leaf(&self) -> bool {
         self.left.is_none() && self.right.is_none()
     }
+
 }
 
 impl PartialOrd for Node {
@@ -78,158 +74,86 @@ impl Ord for Node {
     }
 }
 
+#[derive(Debug)]
 struct HuffmanTree {
-    nodes: Vec<Node>,
+    nodes: Vec<Node>
 }
-
-struct PreOrderIterator<'a> {
-    nodes: &'a Vec<Node>,
-    stack: Vec<&'a Node>,
-    pos: usize,
-}
-
-impl Iterator for PreOrderIterator<'_> {
-    
-    type Item=Node;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        
-        let node = self.stack.pop()?;
-
-        if node.right.is_some() {
-            self.stack.push(&self.nodes[node.right.unwrap()]);
-        }
-        
-        if node.left.is_some() {
-            self.stack.push(&self.nodes[node.left.unwrap()]);
-        }
-
-        self.pos += 1;
-
-        Some(node.clone())
-    }
-}
-
-// impl<'a> IntoIterator for &'a HuffmanTree {
-
-//     type Item=Node;
-//     type IntoIter = PreOrderIterator<'a>;
-
-//     fn into_iter(self) -> Self::IntoIter {
-//         PreOrderIterator{
-//             data: &self.nodes, 
-//             stack: 
-//             pos: 0
-//         }
-//     }
-// }
 
 impl HuffmanTree {
-    
-    fn new(bytes: &[u8]) -> Self {
+
+    fn from(bytes: &[u8]) -> Self {
+
         let freqs = build_freq_table(bytes);
         let mut heap: BinaryHeap<Node> = BinaryHeap::new();
 
-        // Required unique id per node for writing dotfiles.
-        let mut id: usize = 0;
-
         for (symbol, freq) in freqs {
-            heap.push(Node::new(
-                id,
-                freq.to_owned(),
-                Some(symbol.to_owned()),
-                None,
-                None,
-            ));
-            id += 1;
+            heap.push(
+                Node::new(freq, Some(symbol), None, None)
+            )
         }
 
         let mut nodes: Vec<Node> = Vec::new();
         let mut idx: usize = 0;
 
-        while !heap.is_empty() {
-            let left = heap.pop().unwrap();
-            let right_opt = heap.pop();
+        while heap.len() > 1 {
 
-            if right_opt.is_none() {
-                // Last node
-                nodes.push(left);
-                break;
-            }
+            let l = heap.pop().unwrap();
+            let r = heap.pop().unwrap();
 
-            let right = right_opt.unwrap();
+            let l_idx = idx;
+            let r_idx = idx + 1;
 
-            let combined_freq = left.freq + right.freq;
+            let p = Node::from(&l, l_idx, &r, r_idx);
 
-            nodes.push(left);
-            nodes.push(right);
+            nodes.push(l);
+            nodes.push(r);
+            heap.push(p);
 
-            let parent_node = Node::new(id, combined_freq, None, Some(idx), Some(idx + 1));
             idx += 2;
-            id += 1;
 
-            heap.push(parent_node);
         }
+
+        let last = heap.pop();
+        if last.is_some() { nodes.push(last.unwrap())}
 
         Self { nodes }
     }
 
-    fn write_dotfile(&self, filename: &str) -> Result<(), Box<dyn Error>> {
-        let f = File::create(filename)?;
-        let mut f = BufWriter::new(f);
+    fn get_lengths(&self) -> Vec<u8> {
+        
+        // depth
+        let mut d = 0;
+        // current node in given depth
+        let mut n = 0;
+        
+        let lens = Vec::new();
+        lens.reserve(128);
 
-        write_dotfile_header(&mut f)?;
-
-        // Write nodes
-        for node in &self.nodes {
-            if node.symbol.is_some() {
-                write_dotfile_label(&mut f, node.id, node.symbol.unwrap() as char)?
+        for node in self.nodes.iter().rev() {
+            
+            if n >= tree_depth_size(d) {
+                d += 1;
+                n = 0;
+            }
+            
+            lens[d] += 
+            println!("Depth: {d}, N: {n}, SYMFREQ {}", node.freq);
+            
+            if node.is_leaf() {
+                n += 2;
             } else {
-                write_dotfile_label(&mut f, node.id, node.freq)?
+                n += 1;
             }
-        }
-
-        // Write edges
-        for node in &self.nodes {
-
-            if node.left.is_none() && node.right.is_none() {
-                continue;
-            }
-
-            f.write(format!("\tl{} -> {{ ", node.id).as_bytes())?;
-
-            if let Some(idx) = node.left {
-                let l = self.nodes[idx].id;
-                f.write(format!("l{l}").as_bytes())?;
-            }
-
-            if let Some(idx) = node.right {
-                let r = self.nodes[node.right.unwrap()].id;
-                f.write(format!(" l{r}").as_bytes())?;
-            }
-
-            f.write(" };\n".as_bytes())?;
 
         }
 
-        write_dotfile_closure(&mut f)?;
-
-        Ok(())
+        vec![(1u8, 1u8)]
     }
 
-    fn iter_preorder(&self) -> PreOrderIterator {
-        let mut stack = Vec::new();
-        stack.push(self.nodes.last().unwrap());
-        PreOrderIterator{ 
-            nodes: &self.nodes, 
-            stack: stack,
-            pos: 0
-        }
-    }
 }
 
-fn build_freq_table(symbols: &[u8]) -> HashMap<u8, usize> {
-    let mut freqs: HashMap<u8, usize> = HashMap::new();
+fn build_freq_table(symbols: &[u8]) -> HashMap<u8, u32> {
+    let mut freqs: HashMap<u8, u32> = HashMap::new();
 
     for symbol in symbols {
         match freqs.get(symbol) {
@@ -245,25 +169,17 @@ fn build_freq_table(symbols: &[u8]) -> HashMap<u8, usize> {
     freqs
 }
 
-fn write_dotfile_header<T: Write>(w: &mut T) -> Result<(), Box<dyn Error>> {
-    w.write("digraph BST {\n\tnode [fontname=\"Arial\"]\n".as_bytes())?;
-    Ok(())
+#[inline]
+fn tree_depth_size(d: usize) -> usize {
+    // 0 indexed depth max width for a perfect bintree.
+    1 << d
 }
 
-fn write_dotfile_label<T, I, L>(w: &mut T, node_id: I, symbol: L) -> Result<(), Box<dyn Error>>
-where
-    T: Write,
-    I: Display,
-    L: Display,
-{
-    let s = format!("\tl{} [ label = \"{}\" ];\n", node_id, symbol,);
-
-    w.write(s.as_bytes())?;
-
-    Ok(())
-}
-
-fn write_dotfile_closure<T: Write>(w: &mut T) -> Result<(), Box<dyn Error>> {
-    w.write("}".as_bytes())?;
-    Ok(())
+#[test]
+fn tree_depth_calc() {
+    assert_eq!(1, tree_depth_size(0));
+    assert_eq!(2, tree_depth_size(1));
+    assert_eq!(4, tree_depth_size(2));
+    assert_eq!(8, tree_depth_size(3));
+    assert_eq!(16, tree_depth_size(4));
 }
