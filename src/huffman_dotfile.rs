@@ -64,11 +64,11 @@ pub fn write(bytes: &[u8], filename: &str) -> Result<(), Box<dyn Error>> {
 
     // Write nodes
     for node in nodes.iter() {
-        // if node.symbol.is_some() {
-        //     write_dotfile_label(&mut f, node.id, node.symbol.unwrap() as char)?
-        // } else {
+        if node.symbol.is_some() {
+            write_dotfile_label(&mut f, node.id, node.symbol.unwrap() as char)?
+        } else {
             write_dotfile_label(&mut f, node.id, node.freq)?
-        //}
+        }
     }
 
     // Write edges
