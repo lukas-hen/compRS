@@ -11,7 +11,6 @@ use std::{error::Error, result::Result};
 // ------------- API -------------
 
 pub fn write(bytes: &[u8], filename: &str) -> Result<(), Box<dyn Error>> {
-
     // Build naive huffman tree.
     let freqs = build_freq_table(bytes);
     let mut heap: BinaryHeap<Node> = BinaryHeap::new();
@@ -73,7 +72,6 @@ pub fn write(bytes: &[u8], filename: &str) -> Result<(), Box<dyn Error>> {
 
     // Write edges
     for node in nodes.iter() {
-
         if node.left.is_none() && node.right.is_none() {
             continue;
         }
@@ -91,7 +89,6 @@ pub fn write(bytes: &[u8], filename: &str) -> Result<(), Box<dyn Error>> {
         }
 
         f.write(" };\n".as_bytes())?;
-
     }
 
     write_dotfile_closure(&mut f)?;
