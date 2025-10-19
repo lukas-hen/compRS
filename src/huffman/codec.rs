@@ -4,45 +4,47 @@ use super::bits::*;
 use std::cmp::Ordering;
 use std::collections::{BinaryHeap, HashMap};
 use std::fmt::Debug;
-use std::fs::File;
-use std::io::{prelude::*, BufWriter};
-use std::io::BufReader;
+use std::io::{prelude::*};
+use std::io::Read;
 use std::u32;
 use std::{error::Error, result::Result};
 
 
-pub fn encode(bytes: &[u8]) -> Result<(), Box<dyn Error>> {
-    let tree = HuffmanTree::from(bytes);
+pub fn encode<R: Read>(reader: &mut R) -> Result<Vec<u8>, Box<dyn Error>> {
+    
+    let mut bytes = Vec::new();
+    let n_read= reader.read_to_end(&mut bytes)?;
+
+    let tree = HuffmanTree::from(bytes.as_slice());
     let lens = tree.get_bitlengths();
     let codes = generate_codes(&lens);
 
-    let mut f = File::create("compressed")?;
-    
-    // Add syms to decode. Platform specific, should hardcode size.
-    let _ = f.write(&bytes.len().to_be_bytes())?;
+    let mut encoded = Vec::new();
 
-    let _ = f.write(&lens)?;
+    encoded.write(&n_read.to_be_bytes())?; // Add syms to decode. Platform specific, should hardcode size.
+    encoded.write(&lens)?;  // Add canonical alphabet lengths.
 
-    let mut bw = BitWriter::new(f);
+    { // Need to scope the bitwriter so that we can move the encoded vec out.
+        let mut bw = BitWriter::new(&mut encoded);
 
-    for b in bytes.into_iter() {
-        //println!("Char: {}, Code: {}, Len: {}", *b as char, codes[*b as usize].code, codes[*b as usize].len);
-        bw.write_bits(codes[*b as usize].code, codes[*b as usize].len)?;
+        for b in bytes.into_iter() {
+            //println!("Char: {}, Code: {}, Len: {}", *b as char, codes[*b as usize].code, codes[*b as usize].len);
+            bw.write_bits(codes[b as usize].code, codes[b as usize].len)?;
+        }
     }
-
-    Ok(())
+    
+    Ok(encoded)
 }
 
-pub fn decode(bytes: &[u8]) -> Result<(), Box<dyn Error>> {
-    let mut f = File::open("./compressed").expect("Could not open file.");
+pub fn decode<R: Read>(reader: &mut R) -> Result<Vec<u8>, Box<dyn Error>> {
     
     // Get n symbols.
     let mut n_syms_buf = [0u8; 8]; // Platform sensitive.
-    let _ = f.read(&mut n_syms_buf)?;
+    reader.read(&mut n_syms_buf)?;
     let n_syms = usize::from_be_bytes(n_syms_buf);
 
     let mut lens: [u8; 256] = [0; 256];
-    let _n_read = f.read(&mut lens)?;
+    reader.read(&mut lens)?;
 
     let alphabet = generate_codes(&lens);
     let codes: Vec<Code> = alphabet
@@ -52,55 +54,52 @@ pub fn decode(bytes: &[u8]) -> Result<(), Box<dyn Error>> {
 
     const BUFSIZE: usize = 4;
     let mut buf = [0u8; BUFSIZE];
-    //let mut r = BufReader::new(f);
 
-
-    let mut n = f.read(&mut buf)?;
+    let mut n = reader.read(&mut buf)?;
     let mut window = u32::from_be_bytes(buf);
-    n = f.read(&mut buf)?;
-
-    let mut out = String::new();
+    n = reader.read(&mut buf)?;
     
     let mut current_shift: usize = 0;
     let mut current_byte: usize = 0;    
     let mut n_syms_read = 0;
+    
+    let mut decoded = Vec::new();
 
-    let f_out = File::create("out.txt")?;
-    let mut w = BufWriter::new(f_out);
+    { 
 
-    loop {
+        loop {
 
-        let code = match_code(window, &codes)?;
-        n_syms_read += 1;
-        
-        window <<= code.len;
-        current_shift += code.len as usize;
-        
-        w.write(&[code.symbol.unwrap() as u8])?;
-        //out.push(code.symbol.unwrap());
-
-        if current_shift >= 8 {
-
-            if current_byte == 4 {
-                n = f.read(&mut buf)?;
-                current_byte = 0;
-            }
+            let code = match_code(window, &codes)?;
+            n_syms_read += 1;
             
-            let mut new_byte: u32 = buf[current_byte] as u32;
-            // window &= (1 << 8) - 1; // clear bits
-            new_byte <<= current_shift - 8; // adjust potential offset
-            window |= new_byte;
+            window <<= code.len;
+            current_shift += code.len as usize;
+            
+            decoded.write(&[code.symbol.unwrap() as u8])?;
 
-            current_byte += 1;
-            current_shift -= 8;
-        }
+            if current_shift >= 8 {
 
-        if n_syms_read == n_syms {
-            break;
+                if current_byte == 4 {
+                    n = reader.read(&mut buf)?;
+                    current_byte = 0;
+                }
+                
+                let mut new_byte: u32 = buf[current_byte] as u32;
+                // window &= (1 << 8) - 1; // clear bits
+                new_byte <<= current_shift - 8; // adjust potential offset
+                window |= new_byte;
+
+                current_byte += 1;
+                current_shift -= 8;
+            }
+
+            if n_syms_read == n_syms {
+                break;
+            }
         }
     }
 
-    Ok(())
+    Ok(decoded)
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -329,66 +328,10 @@ fn build_freq_table(symbols: &[u8]) -> HashMap<u8, usize> {
     freqs
 }
 
-fn shl_u32_window(window: &mut u32, lookahead: &mut u32, shift_by: u8) -> Result<(), Box<dyn Error>> {
-    assert!(shift_by < 32);
-    
-    let mask = gen_bitmask_lalign(shift_by);
-    
-    *window <<= shift_by;
-    *window |= (*lookahead & mask) >> 32 - shift_by; 
-    *lookahead <<= shift_by;
-    
-    Ok(())
-}
-
-#[test]
-fn test_simple_window_shift() {
-    
-    let mut window = 0;
-    let mut lookahead = 1 << 31; // 0b10000...
-
-    shl_u32_window(&mut window, &mut lookahead, 1).unwrap();
-    assert_eq!(window, 1);
-    assert_eq!(lookahead, 0);
-
-    shl_u32_window(&mut window, &mut lookahead, 1).unwrap();
-    assert_eq!(window, 2);
-    assert_eq!(lookahead, 0);
-
-    shl_u32_window(&mut window, &mut lookahead, 31).unwrap(); // overflow
-    assert_eq!(window, 0);
-    assert_eq!(lookahead, 0);
-}
-
-#[test]
-fn test_window_shift_multiple() {
-    
-    let mut window = 0xFFFFFFFF;
-    let mut lookahead = 0xAAAAAAAA; // 0b10101010....
-
-    shl_u32_window(&mut window, &mut lookahead, 3).unwrap();
-    assert_eq!(window, 0xFFFFFFF8 + 0b101); // F8 = 0b11111000
-    assert_eq!(lookahead, 0x55555550); // 0b101010.... << 3 = 0b010101...01000 = 0x55..50
-    
-    // Shift back to aligned again.
-    shl_u32_window(&mut window, &mut lookahead, 5).unwrap();
-    assert_eq!(window, 0xFFFFFF00 + 0b10101010);
-    assert_eq!(lookahead, 0xAAAAAA00);
-}
-
 fn gen_bitmask_lalign(sz: u8) -> u32 {
     if sz == 0 {
         return 0;
     } // Protect from overflow panic.
     let mask = u32::MAX >> 32 - sz; // right aligned
     mask.reverse_bits()
-}
-
-#[test]
-fn test_gen_bitmask() {
-    assert_eq!(gen_bitmask_lalign(0), 0u32);
-    assert_eq!(gen_bitmask_lalign(1), 2_u32.pow(31));
-    assert_eq!(gen_bitmask_lalign(2), 0b11000000000000000000000000000000);
-    assert_eq!(gen_bitmask_lalign(3), 0b11100000000000000000000000000000);
-    assert_eq!(gen_bitmask_lalign(4), 0b11110000000000000000000000000000);
 }

@@ -1,18 +1,19 @@
 use std::error::Error;
 use std::fs::File;
 use std::io::prelude::*;
+use std::io::Write;
 
-pub struct BitWriter {
-    file: File,
+pub struct BitWriter<W: Write> {
+    writer: W,
     buffer: u8,
     buffer_len: u8, // Number of bits currently in the buffer
 }
 
-impl BitWriter {
+impl<W: Write> BitWriter<W> {
     /// Create a new `BitWriter` that writes to the given file.
-    pub fn new(file: File) -> Self {
+    pub fn new(writer: W) -> Self {
         Self {
-            file,
+            writer: writer,
             buffer: 0,
             buffer_len: 0,
         }
@@ -56,20 +57,20 @@ impl BitWriter {
         if self.buffer_len > 0 {
             self.flush_buffer()?;
         }
-        self.file.flush()?;
+        self.writer.flush()?;
         Ok(())
     }
 
     /// Internal method to flush the buffer (only if it's full or on `flush` call).
     fn flush_buffer(&mut self) -> Result<(), Box<dyn Error>> {
-        self.file.write_all(&[self.buffer])?;
+        self.writer.write_all(&[self.buffer])?;
         self.buffer = 0;
         self.buffer_len = 0;
         Ok(())
     }
 }
 
-impl Drop for BitWriter {
+impl<W: Write> Drop for BitWriter<W> {
     fn drop(&mut self) {
         if let Err(e) = self.flush() {
             eprintln!("Failed to flush BitWriter: {}", e);
