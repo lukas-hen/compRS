@@ -1,6 +1,6 @@
-use clap::{Args, Command, Parser, Subcommand};
-use std::fs;
-use std::path::PathBuf;
+use clap::{Args, Parser, Subcommand};
+use std::fs::File;
+use std::io::{BufWriter, Write};
 
 mod huffman;
 
@@ -42,26 +42,33 @@ fn main() {
             output,
             decompress: true,
         }) => {
-            println!("DECOMPRESS")
+            huffman_decode_file(input, output);
         }
+
         Commands::Huffman(HuffmanArgs {
             input,
             output,
             decompress: false,
         }) => {
-            println!("COMPRESS")
+            huffman_encode_file(input, output);
         }
+
         _ => {}
     }
+}
 
-    // let filename: &str = "./resources/poem.txt";
-    // let contents = fs::read(filename).expect("Should have been able to read the file");
+fn huffman_decode_file(input_fname: &String, output_fname: &String) {
+    let mut f_in = File::open(input_fname).unwrap();
+    let decoded = huffman::codec::decode(&mut f_in).unwrap();
+    let mut f_out = File::create(output_fname).unwrap();
+    let mut bw = BufWriter::new(f_out);
+    bw.write_all(decoded.as_slice()).unwrap();
+}
 
-    // // huffman_dotfile::write(contents.as_slice(), "./resources/test.dot")
-    // //     .expect("Failed to write dotfile");
-
-    // let encoded = huffman::codec::encode(&mut contents.as_slice()).expect("Encoding failed");
-    // let decoded = huffman::codec::decode(&mut encoded.as_slice()).expect("Decoding failed");
-
-    // assert_eq!(contents.as_slice(), decoded.as_slice());
+fn huffman_encode_file(input_fname: &String, output_fname: &String) {
+    let mut f_in = File::open(input_fname).unwrap();
+    let encoded = huffman::codec::encode(&mut f_in).unwrap();
+    let mut f_out = File::create(output_fname).unwrap();
+    let mut bw = BufWriter::new(f_out);
+    let _ = bw.write_all(encoded.as_slice()).unwrap();
 }
