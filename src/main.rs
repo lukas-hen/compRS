@@ -33,15 +33,24 @@ struct HuffmanArgs {
     output: String,
 }
 
-
 fn main() {
-
     let cli = Cli::parse();
 
-
     match &cli.command {
-        Commands::Huffman(HuffmanArgs{input, output, decompress: true}) => {println!("DECOMPRESS")}
-        Commands::Huffman(HuffmanArgs{input, output, decompress: false}) => {println!("COMPRESS")}
+        Commands::Huffman(HuffmanArgs {
+            input,
+            output,
+            decompress: true,
+        }) => {
+            println!("DECOMPRESS")
+        }
+        Commands::Huffman(HuffmanArgs {
+            input,
+            output,
+            decompress: false,
+        }) => {
+            println!("COMPRESS")
+        }
         _ => {}
     }
 
