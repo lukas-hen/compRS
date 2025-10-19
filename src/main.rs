@@ -20,7 +20,7 @@ enum Commands {
 
 #[derive(Args, Debug)]
 struct HuffmanArgs {
-    /// If not set default behaviour is to compress.
+    /// If not set, the default behaviour is to compress.
     #[arg(short, long)]
     decompress: bool,
 
