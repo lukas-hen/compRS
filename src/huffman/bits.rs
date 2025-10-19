@@ -125,7 +125,7 @@ mod tests {
         fs::remove_file(file_path).unwrap();
     }
 
-        #[test]
+    #[test]
     fn bit_write_multi_buffer_test() {
         let file_path = "test_output3.bin";
         let file = File::create(file_path).unwrap();
@@ -137,15 +137,9 @@ mod tests {
         writer
             .write_bits(0b10100010101001001110001010101001, 32)
             .unwrap();
-        writer
-            .write_bits(0b00000111, 3)
-            .unwrap();
-        writer
-            .write_bits(0b00000101, 3)
-            .unwrap();
-        writer
-            .write_bits(0b00000010, 2)
-            .unwrap();
+        writer.write_bits(0b00000111, 3).unwrap();
+        writer.write_bits(0b00000101, 3).unwrap();
+        writer.write_bits(0b00000010, 2).unwrap();
         writer.flush().unwrap();
 
         let written_data = fs::read(file_path).unwrap();
@@ -158,11 +152,8 @@ mod tests {
             vec![0b10100010, 0b10100100, 0b11100010, 0b10101001]
         );
         println!("{:#08b}", written_data[8]);
-        assert_eq!(
-            written_data[8],
-            0b11110110,
-        );
-        
+        assert_eq!(written_data[8], 0b11110110,);
+
         // Clean up
         fs::remove_file(file_path).unwrap();
     }

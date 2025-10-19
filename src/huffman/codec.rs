@@ -4,16 +4,14 @@ use super::bits::*;
 use std::cmp::Ordering;
 use std::collections::{BinaryHeap, HashMap};
 use std::fmt::Debug;
-use std::io::{prelude::*};
+use std::io::prelude::*;
 use std::io::Read;
 use std::u32;
 use std::{error::Error, result::Result};
 
-
 pub fn encode<R: Read>(reader: &mut R) -> Result<Vec<u8>, Box<dyn Error>> {
-    
     let mut bytes = Vec::new();
-    let n_read= reader.read_to_end(&mut bytes)?;
+    let n_read = reader.read_to_end(&mut bytes)?;
 
     let tree = HuffmanTree::from(bytes.as_slice());
     let lens = tree.get_bitlengths();
@@ -22,9 +20,10 @@ pub fn encode<R: Read>(reader: &mut R) -> Result<Vec<u8>, Box<dyn Error>> {
     let mut encoded = Vec::new();
 
     encoded.write(&n_read.to_be_bytes())?; // Add syms to decode. Platform specific, should hardcode size.
-    encoded.write(&lens)?;  // Add canonical alphabet lengths.
+    encoded.write(&lens)?; // Add canonical alphabet lengths.
 
-    { // Need to scope the bitwriter so that we can move the encoded vec out.
+    {
+        // Need to scope the bitwriter so that we can move the encoded vec out.
         let mut bw = BitWriter::new(&mut encoded);
 
         for b in bytes.into_iter() {
@@ -32,12 +31,11 @@ pub fn encode<R: Read>(reader: &mut R) -> Result<Vec<u8>, Box<dyn Error>> {
             bw.write_bits(codes[b as usize].code, codes[b as usize].len)?;
         }
     }
-    
+
     Ok(encoded)
 }
 
 pub fn decode<R: Read>(reader: &mut R) -> Result<Vec<u8>, Box<dyn Error>> {
-    
     // Get n symbols.
     let mut n_syms_buf = [0u8; 8]; // Platform sensitive.
     reader.read(&mut n_syms_buf)?;
@@ -47,10 +45,7 @@ pub fn decode<R: Read>(reader: &mut R) -> Result<Vec<u8>, Box<dyn Error>> {
     reader.read(&mut lens)?;
 
     let alphabet = generate_codes(&lens);
-    let codes: Vec<Code> = alphabet
-        .into_iter()
-        .filter(|c| c.len > 0)
-        .collect();
+    let codes: Vec<Code> = alphabet.into_iter().filter(|c| c.len > 0).collect();
 
     const BUFSIZE: usize = 4;
     let mut buf = [0u8; BUFSIZE];
@@ -58,32 +53,29 @@ pub fn decode<R: Read>(reader: &mut R) -> Result<Vec<u8>, Box<dyn Error>> {
     let mut n = reader.read(&mut buf)?;
     let mut window = u32::from_be_bytes(buf);
     n = reader.read(&mut buf)?;
-    
+
     let mut current_shift: usize = 0;
-    let mut current_byte: usize = 0;    
+    let mut current_byte: usize = 0;
     let mut n_syms_read = 0;
-    
+
     let mut decoded = Vec::new();
 
-    { 
-
+    {
         loop {
-
             let code = match_code(window, &codes)?;
             n_syms_read += 1;
-            
+
             window <<= code.len;
             current_shift += code.len as usize;
-            
+
             decoded.write(&[code.symbol.unwrap() as u8])?;
 
             if current_shift >= 8 {
-
                 if current_byte == 4 {
                     n = reader.read(&mut buf)?;
                     current_byte = 0;
                 }
-                
+
                 let mut new_byte: u32 = buf[current_byte] as u32;
                 // window &= (1 << 8) - 1; // clear bits
                 new_byte <<= current_shift - 8; // adjust potential offset
@@ -279,7 +271,14 @@ fn generate_codes(lens: &[u8; 256]) -> Vec<Code> {
     }
 
     // Generate the actual codes.
-    let mut codes: Vec<Code> = vec![Code { code: 0, len: 0, symbol: None }; 256];
+    let mut codes: Vec<Code> = vec![
+        Code {
+            code: 0,
+            len: 0,
+            symbol: None
+        };
+        256
+    ];
     codes.reserve_exact(256);
 
     for n in 0..255 {
@@ -298,9 +297,7 @@ fn generate_codes(lens: &[u8; 256]) -> Vec<Code> {
 }
 
 fn match_code(window: u32, codes: &[Code]) -> Result<Code, Box<dyn Error>> {
-
     for code in codes.iter() {
-    
         let c = code.code << (32 - code.len);
         let mask = gen_bitmask_lalign(code.len);
         if (window & mask) == c {
