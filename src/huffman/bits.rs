@@ -80,6 +80,7 @@ impl<W: Write> Drop for BitWriter<W> {
 mod tests {
     use super::*;
     use std::fs;
+    use std::fs::File;
 
     #[test]
     fn bit_writer_test() {
