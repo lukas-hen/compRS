@@ -48,14 +48,17 @@ After installation, the `huff` CLI will be available for use on your system.
 ## CLI Usage
 
 ```plaintext
-Encode file using Huffman Encoding
-Usage: huff --input <INPUT> --output <OUTPUT>
+Usage: huff <COMMAND>
+
+Commands:
+  encode  Encode a file
+  decode  Decode a file
+  dot     Generate a .dot file for visualizing the huffman tree of a given input
+  help    Print this message or the help of the given subcommand(s)
 
 Options:
-  -d, --decompress       If not set, the default behaviour is to compress
-  -i, --input <INPUT>    Input filename
-  -o, --output <OUTPUT>  Compressed filename
-  -h, --help             Print help
+  -h, --help     Print help
+  -V, --version  Print version
 ```
 
 ### Examples
@@ -65,7 +68,7 @@ Options:
 To compress a file named `input.txt` into a compressed file `output.compressed`:
 
 ```bash
-huff --input input.txt --output output.compressed
+huff encode -i input.txt -o output.compressed
 ```
 
 #### Decompressing a File
@@ -73,7 +76,7 @@ huff --input input.txt --output output.compressed
 To decompress the file `output.compressed` into `decompressed.txt`:
 
 ```bash
-huff --decompress --input output.compressed --output decompressed.txt
+huff decode -i output.compressed -o decompressed.txt
 ```
 
 ## Contributing
