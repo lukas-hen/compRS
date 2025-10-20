@@ -1,16 +1,8 @@
-# compRS
+# Huffman Encoding/Decoding CLI
 
-`compRS` is a Rust library & CLI tool for compression & decompression.
-Currently the only algorithm implemented is Huffman encoding and decoding. 
+`huff` is a CLI tool for huffman encoding & decoding.
 
-The huffman implementation efficiently compresses and decompresses files or in-memory buffers using canonical Huffman encoding, providing both a CLI and a simple API.
-
-In the future more compression methods might be added, thus the repo is not a huffman specific repo. The CLI only has a subcommand `huffman` for huffman-encoding for now.
-
-## Features
-
-- Support for encoding/decoding **files** using the CLI.
-- Support for encoding/decoding **in-memory buffers** via the huffman module.
+The huffman implementation efficiently compresses and decompresses files or in-memory buffers using canonical Huffman encoding.
 
 ## Implementation Specifics
 
@@ -42,8 +34,8 @@ In the future more compression methods might be added, thus the repo is not a hu
 
 1. Clone the GitHub repository:  
     ```bash
-    git clone https://github.com/<your-username>/compRS.git
-    cd compRS
+    git clone https://github.com/lukas-hen/huffman_rs.git
+    cd huffman_rs
     ```
 
 2. Use `cargo` to install the CLI tool:  
@@ -51,15 +43,13 @@ In the future more compression methods might be added, thus the repo is not a hu
     cargo install --path .
     ```
 
-After installation, the `comprs` CLI will be available for use on your system.
+After installation, the `huff` CLI will be available for use on your system.
 
 ## CLI Usage
 
-As i might grow this to other compression algorithms in the future, all huffman-related args are under the subcommand `huffman`.
-
 ```plaintext
 Encode file using Huffman Encoding
-Usage: comprs huffman [OPTIONS] --input <INPUT> --output <OUTPUT>
+Usage: huff --input <INPUT> --output <OUTPUT>
 
 Options:
   -d, --decompress       If not set, the default behaviour is to compress
@@ -75,7 +65,7 @@ Options:
 To compress a file named `input.txt` into a compressed file `output.compressed`:
 
 ```bash
-comprs huffman --input input.txt --output output.compressed
+huff --input input.txt --output output.compressed
 ```
 
 #### Decompressing a File
@@ -83,36 +73,8 @@ comprs huffman --input input.txt --output output.compressed
 To decompress the file `output.compressed` into `decompressed.txt`:
 
 ```bash
-comprs huffman --decompress --input output.compressed --output decompressed.txt
+huff --decompress --input output.compressed --output decompressed.txt
 ```
-
-## Library API
-
-You can use `compRS` programmatically in your own Rust projects by leveraging the `encode` and `decode` functions provided in the `huffman` module.
-
-### API Overview
-
-#### `encode`
-
-```rust
-pub fn encode<R: Read>(reader: &mut R) -> Result<Vec<u8>, Box<dyn Error>>
-```
-
-- **Description**: Encodes input using canonical Huffman encoding.
-- **Parameters**:  
-  - `reader`: A mutable reference to any type implementing the `Read` trait (e.g., a file, a buffer).
-- **Returns**: A `Result` containing the encoded data as a `Vec<u8>` or an error.
-
-#### `decode`
-
-```rust
-pub fn decode<R: Read>(reader: &mut R) -> Result<Vec<u8>, Box<dyn Error>>
-```
-
-- **Description**: Decodes a buffer or file previously encoded with Huffman encoding.
-- **Parameters**:  
-  - `reader`: A mutable reference to any type implementing the `Read` trait (e.g., a file, a buffer).
-- **Returns**: A `Result` containing the decoded data as a `Vec<u8>` or an error.
 
 ## Contributing
 

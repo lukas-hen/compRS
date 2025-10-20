@@ -1,3 +1,4 @@
 mod bits;
+mod tree;
+
 pub mod codec;
-pub mod huffman_dotfile;

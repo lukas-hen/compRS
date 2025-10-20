@@ -1,13 +1,10 @@
-use crate::huffman::bits;
-
-use super::bits::*;
-use std::cmp::Ordering;
-use std::collections::{BinaryHeap, HashMap};
 use std::fmt::Debug;
-use std::io::prelude::*;
-use std::io::Read;
+use std::io::{Read, Write};
 use std::u32;
 use std::{error::Error, result::Result};
+
+use super::bits::BitWriter;
+use super::tree::HuffmanTree;
 
 pub fn encode<R: Read>(reader: &mut R) -> Result<Vec<u8>, Box<dyn Error>> {
     let mut bytes = Vec::new();
@@ -15,7 +12,7 @@ pub fn encode<R: Read>(reader: &mut R) -> Result<Vec<u8>, Box<dyn Error>> {
 
     let tree = HuffmanTree::from(bytes.as_slice());
     let lens = tree.get_bitlengths();
-    let codes = generate_codes(&lens);
+    let codes = lengths_to_codes(&lens);
 
     let mut encoded = Vec::new();
 
@@ -23,9 +20,8 @@ pub fn encode<R: Read>(reader: &mut R) -> Result<Vec<u8>, Box<dyn Error>> {
     encoded.write(&lens)?; // Add canonical alphabet lengths.
 
     {
-        // Need to scope the bitwriter so that we can move the encoded vec out.
+        // Need to scope the bitwriter to remove the mutable ref before moving out the buf.
         let mut bw = BitWriter::new(&mut encoded);
-
         for b in bytes.into_iter() {
             //println!("Char: {}, Code: {}, Len: {}", *b as char, codes[*b as usize].code, codes[*b as usize].len);
             bw.write_bits(codes[b as usize].code, codes[b as usize].len)?;
@@ -44,7 +40,7 @@ pub fn decode<R: Read>(reader: &mut R) -> Result<Vec<u8>, Box<dyn Error>> {
     let mut lens: [u8; 256] = [0; 256];
     reader.read(&mut lens)?;
 
-    let alphabet = generate_codes(&lens);
+    let alphabet = lengths_to_codes(&lens);
     let codes: Vec<Code> = alphabet.into_iter().filter(|c| c.len > 0).collect();
 
     const BUFSIZE: usize = 4;
@@ -94,151 +90,6 @@ pub fn decode<R: Read>(reader: &mut R) -> Result<Vec<u8>, Box<dyn Error>> {
     Ok(decoded)
 }
 
-#[derive(Debug, PartialEq, Eq)]
-struct Node {
-    freq: usize,
-    symbol: Option<u8>,
-    left: Option<usize>,
-    right: Option<usize>,
-    depth: Option<u8>,
-}
-
-impl Node {
-    fn new(freq: usize, symbol: Option<u8>, left: Option<usize>, right: Option<usize>) -> Self {
-        Self {
-            freq,
-            symbol,
-            left,
-            right,
-            depth: None,
-        }
-    }
-
-    fn from(l_child: &Node, l_idx: usize, r_child: &Node, r_idx: usize) -> Self {
-        Self {
-            freq: l_child.freq + r_child.freq,
-            symbol: None,
-            left: Some(l_idx),
-            right: Some(r_idx),
-            depth: None,
-        }
-    }
-
-    fn is_leaf(&self) -> bool {
-        self.left.is_none() && self.right.is_none()
-    }
-}
-
-impl PartialOrd for Node {
-    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        Some(self.cmp(other))
-    }
-}
-
-// Ordering to make BinaryHeap a min-heap
-impl Ord for Node {
-    fn cmp(&self, other: &Self) -> Ordering {
-        other
-            .freq
-            .cmp(&self.freq)
-            .then_with(|| self.symbol.cmp(&other.symbol))
-    }
-}
-
-#[derive(Debug)]
-struct HuffmanTree {
-    nodes: Vec<Node>,
-}
-
-impl HuffmanTree {
-    fn from(bytes: &[u8]) -> Self {
-        let freqs = build_freq_table(bytes);
-        let mut heap: BinaryHeap<Node> = BinaryHeap::new();
-
-        for (symbol, freq) in freqs {
-            heap.push(Node::new(freq, Some(symbol), None, None))
-        }
-
-        let mut nodes: Vec<Node> = Vec::new();
-        let mut idx: usize = 0;
-
-        while heap.len() > 1 {
-            let l = heap.pop().unwrap();
-            let r = heap.pop().unwrap();
-
-            let l_idx = idx;
-            let r_idx = idx + 1;
-
-            let p = Node::from(&l, l_idx, &r, r_idx);
-
-            nodes.push(l);
-            nodes.push(r);
-            heap.push(p);
-
-            idx += 2;
-        }
-
-        let last = heap.pop();
-        if last.is_some() {
-            nodes.push(last.unwrap())
-        }
-
-        let mut tree = Self { nodes };
-
-        tree.set_depths();
-
-        tree
-    }
-
-    pub fn set_depths(&mut self) -> () {
-        // Iterate with DFS to calculcate depths in one pass
-        // Doesn't work in level order as tree is not necessarily complete.
-        // (It's a _full_ binary tree.)
-
-        let mut node_idx_stack: Vec<usize> = Vec::new();
-        let mut depth_stack: Vec<u8> = Vec::new();
-
-        let root_idx = self.nodes.len() - 1;
-        node_idx_stack.push(root_idx);
-
-        // Assume AT LEAST 3 nodes.
-        depth_stack.push(1);
-        depth_stack.push(1);
-        depth_stack.push(0);
-
-        while let Some(node_idx) = node_idx_stack.pop() {
-            let depth = depth_stack.pop().unwrap();
-
-            if self.nodes[node_idx].is_leaf() {
-                // If leaf, skip.
-                // every node has exactly 0 or 2 children, thus fine to only check if leaf.
-                self.nodes[node_idx].depth = Some(depth);
-                continue;
-            }
-
-            self.nodes[node_idx].depth = Some(depth);
-
-            node_idx_stack.push(self.nodes[node_idx].right.unwrap());
-            node_idx_stack.push(self.nodes[node_idx].left.unwrap());
-            depth_stack.push(depth + 1);
-            depth_stack.push(depth + 1);
-        }
-    }
-
-    fn get_bitlengths(&self) -> [u8; 256] {
-        let mut lens: [u8; 256] = [0; 256];
-
-        for node in self.nodes.iter() {
-            match node.symbol {
-                Some(s) => lens[s as usize] = node.depth.unwrap(),
-                None => continue,
-            }
-        }
-
-        lens
-    }
-}
-
 #[derive(Clone)]
 struct Code {
     code: u32,
@@ -252,7 +103,7 @@ impl Debug for Code {
     }
 }
 
-fn generate_codes(lens: &[u8; 256]) -> Vec<Code> {
+fn lengths_to_codes(lens: &[u8; 256]) -> Vec<Code> {
     // Count number of symbols that have a certain length (in bits).
     let mut bl_count: [u32; 256] = [0; 256];
     for len in lens {
@@ -306,23 +157,6 @@ fn match_code(window: u32, codes: &[Code]) -> Result<Code, Box<dyn Error>> {
     }
 
     Err("Could not match code.".into())
-}
-
-fn build_freq_table(symbols: &[u8]) -> HashMap<u8, usize> {
-    let mut freqs: HashMap<u8, usize> = HashMap::new();
-
-    for symbol in symbols {
-        match freqs.get(symbol) {
-            Some(count) => {
-                freqs.insert(symbol.to_owned(), count + 1);
-            }
-            None => {
-                freqs.insert(symbol.to_owned(), 1);
-            }
-        }
-    }
-
-    freqs
 }
 
 fn gen_bitmask_lalign(sz: u8) -> u32 {
